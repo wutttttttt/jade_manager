@@ -1,0 +1,13 @@
+{
+  "name": "翡翠档口经营工具",
+  "appid": "__UNI__JADEDEMO",
+  "description": "仅含合成数据的微信小程序开发工程",
+  "versionName": "0.1.0",
+  "versionCode": 100,
+  "transformPx": false,
+  "mp-weixin": {
+    "appid": "touristappid",
+    "setting": { "urlCheck": false, "es6": true, "minified": true }
+  }
+}
+

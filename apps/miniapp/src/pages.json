@@ -1,0 +1,16 @@
+{
+  "pages": [
+    { "path": "pages/showroom/index", "style": { "navigationBarTitleText": "看新款" } },
+    { "path": "pages/staff/index", "style": { "navigationBarTitleText": "档口工作台" } }
+  ],
+  "tabBar": {
+    "color": "#668075",
+    "selectedColor": "#217451",
+    "list": [
+      { "pagePath": "pages/showroom/index", "text": "客户看款" },
+      { "pagePath": "pages/staff/index", "text": "商家工作台" }
+    ]
+  },
+  "globalStyle": { "navigationBarBackgroundColor": "#e6f1ea", "backgroundColor": "#f5f7f5" }
+}
+

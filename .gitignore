@@ -1,0 +1,24 @@
+# Local credentials and private runtime data; keep sanitized examples tracked.
+.DS_Store
+._*
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+/backups/
+/var/*
+!/var/media/
+/var/media/*
+!/var/media/jade-a001.svg
+!/var/media/jade-a002.svg
+!/var/media/demo-upload.png
+!/var/media/demo-video.mp4
+/private-data/
+/uploads/
+*.log
+node_modules/
+dist/
+unpackage/
+coverage/
+/apps/miniapp/project.private.config.json

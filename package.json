@@ -1,0 +1,22 @@
+{
+  "name": "jade-manager",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "workspaces": ["apps/*"],
+  "engines": { "node": ">=22.18" },
+  "scripts": {
+    "test": "node --test tests/*.test.ts",
+    "test:integration": "node scripts/integration.mjs",
+    "typecheck:api": "tsc --noEmit --module nodenext --moduleResolution nodenext --target es2022 --allowImportingTsExtensions --skipLibCheck apps/api/src/domain.ts apps/api/src/media.ts apps/api/src/store.ts apps/api/src/server.ts",
+    "check": "npm test && npm run typecheck:api && node --check scripts/integration.mjs && node --check scripts/backup.mjs && node --check scripts/restore.mjs && node --check scripts/wechat-project.mjs",
+    "db:init": "node --env-file-if-exists=.env scripts/db.mjs apps/api/db/001_init.sql apps/api/db/003_media.sql apps/api/db/004_staff.sql",
+    "db:seed": "node --env-file-if-exists=.env scripts/db.mjs apps/api/db/002_seed.sql",
+    "backup": "node --env-file-if-exists=.env scripts/backup.mjs",
+    "restore": "node --env-file-if-exists=.env scripts/restore.mjs",
+    "api": "node --env-file-if-exists=.env apps/api/src/server.ts",
+    "miniapp:dev": "npm run dev:mp-weixin -w @jade/miniapp",
+    "miniapp:build": "npm run build:mp-weixin -w @jade/miniapp",
+    "miniapp:build:wechat": "npm run miniapp:build && node scripts/wechat-project.mjs"
+  }
+}
