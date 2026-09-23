@@ -2,7 +2,6 @@
 import { computed, ref } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
 import { API_BASE, loadShowroom, type GoodsCard } from '../../api'
-import { fallbackGoods } from '../../data/fallback'
 
 const goods = ref<GoodsCard[]>([])
 const modes = ['visitor', 'customer-multi', 'customer-grant', 'customer-list'] as const
@@ -39,8 +38,7 @@ async function refresh() {
       ? '当前测试客户未启用，正在展示访客公开商品' : ''
   } catch {
     if (current !== refreshId) return
-    goods.value = batchId.value ? [] : fallbackGoods
-    notice.value = batchId.value ? '批次当前不可访问，请联系老板' : '服务端暂不可用，正在展示内置公开样例'
+    notice.value = batchId.value ? '批次当前不可访问，请联系老板' : '服务端暂不可用，无法显示当前商品和报价'
   }
 }
 
@@ -92,7 +90,7 @@ onShow(refresh)
       <text class="price">{{ item.quote ? `¥${item.quote.priceYuan}` : '价格请询' }}</text>
       <button size="mini" @click="contact">联系老板</button>
     </view>
-    <view v-if="!shown.length" class="empty">当前身份暂无可见商品</view>
+    <view v-if="!shown.length" class="empty">暂无可展示商品</view>
   </view>
 </template>
 

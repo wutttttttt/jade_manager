@@ -30,6 +30,7 @@ test('联合备份恢复校验数据库与媒体且拒绝危险目标', async (c
   const linkedBackupDir = join(root, 'backups', linkedBackupName)
   const failedBackupDir = join(root, 'backups', failedBackupName)
   const restoreLog = join(fakeBin, 'restore.log')
+  const inspectLog = join(fakeBin, 'inspect.log')
   context.after(async () => {
     await unlink(mediaEscapeLink).catch(() => undefined)
     await unlink(mediaCurrentAlias).catch(() => undefined)
@@ -53,7 +54,11 @@ printf 'synthetic database dump\n' > "$output"
   await writeFile(join(fakeBin, 'pg_restore'), `#!/bin/sh
 printf '%s\n' "$@" > "$PG_RESTORE_LOG"
 `)
-  await Promise.all(['pg_dump', 'pg_restore'].map((name) => chmod(join(fakeBin, name), 0o755)))
+  await writeFile(join(fakeBin, 'psql'), `#!/bin/sh
+printf '%s\n' "$@" > "$PG_INSPECT_LOG"
+printf '0\n'
+`)
+  await Promise.all(['pg_dump', 'pg_restore', 'psql'].map((name) => chmod(join(fakeBin, name), 0o755)))
 
   const baseEnv = { ...process.env, POSTGRES_BIN: fakeBin, BACKUP_CONFIRM_OFFLINE: '1',
     DATABASE_URL: 'postgres://jade:jade@127.0.0.1:5432/jade_manager', MEDIA_ROOT: mediaSource }
@@ -93,7 +98,7 @@ printf '%s\n' "$@" > "$PG_RESTORE_LOG"
     assert.equal(manifest.files[name], digest)
   }
 
-  const restoreEnv = { ...baseEnv, PG_RESTORE_LOG: restoreLog,
+  const restoreEnv = { ...baseEnv, PG_RESTORE_LOG: restoreLog, PG_INSPECT_LOG: inspectLog,
     RESTORE_DATABASE_URL: 'postgres://jade:jade@127.0.0.1:5432/jade_manager_restore_test',
     RESTORE_CONFIRM: 'jade_manager_restore_test', RESTORE_MEDIA_ROOT: mediaRestore }
   await mkdir(linkedProjectRoot)
@@ -128,12 +133,23 @@ printf '%s\n' "$@" > "$PG_RESTORE_LOG"
   assert.equal(await readFile(join(mediaRestore, 'asset.bin'), 'utf8'), 'synthetic media\n')
   await assert.rejects(access(join(mediaRestore, 'abandoned.part')), { code: 'ENOENT' })
   const restoreArguments = await readFile(restoreLog, 'utf8')
-  assert.match(restoreArguments, /--clean/)
+  assert.doesNotMatch(restoreArguments, /--clean/)
   assert.match(restoreArguments, /--single-transaction/)
+  assert.match(restoreArguments, /--exit-on-error/)
   assert.match(restoreArguments, /jade_manager_restore_test/)
+  assert.match(await readFile(inspectLog, 'utf8'), /--dbname\njade_manager_restore_test/)
+
+  await writeFile(join(fakeBin, 'psql'), '#!/bin/sh\nprintf "1\\n"\n')
+  await unlink(restoreLog)
+  const nonemptyDatabase = spawnSync(process.execPath, ['scripts/restore.mjs', `backups/${backupName}`], {
+    cwd: root, env: { ...restoreEnv, RESTORE_MEDIA_ROOT: mediaUnsafeTarget }, encoding: 'utf8',
+  })
+  assert.notEqual(nonemptyDatabase.status, 0)
+  assert.match(nonemptyDatabase.stderr, /恢复目标数据库必须为空/)
+  await assert.rejects(access(restoreLog), { code: 'ENOENT' })
+  await writeFile(join(fakeBin, 'psql'), '#!/bin/sh\nprintf "0\\n"\n')
 
   await mkdir(mediaCurrentTarget)
-  await unlink(restoreLog)
   const currentMediaRestore = spawnSync(process.execPath, ['scripts/restore.mjs', `backups/${backupName}`], {
     cwd: root, env: { ...restoreEnv, MEDIA_ROOT: mediaCurrentTarget, RESTORE_MEDIA_ROOT: mediaCurrentTarget },
     encoding: 'utf8',
@@ -143,13 +159,22 @@ printf '%s\n' "$@" > "$PG_RESTORE_LOG"
   assert.deepEqual(await readdir(mediaCurrentTarget), [])
   await assert.rejects(access(restoreLog), { code: 'ENOENT' })
 
+  const nestedTarget = join(mediaSource, 'restore-child')
+  const nestedMediaRestore = spawnSync(process.execPath, ['scripts/restore.mjs', `backups/${backupName}`], {
+    cwd: root, env: { ...restoreEnv, RESTORE_MEDIA_ROOT: nestedTarget }, encoding: 'utf8',
+  })
+  assert.notEqual(nestedMediaRestore.status, 0)
+  assert.match(nestedMediaRestore.stderr, /恢复媒体目录不能与当前媒体目录重叠/)
+  await assert.rejects(access(nestedTarget), { code: 'ENOENT' })
+  await assert.rejects(access(restoreLog), { code: 'ENOENT' })
+
   await symlink(mediaCurrentTarget, mediaCurrentAlias)
   const aliasedCurrentMediaRestore = spawnSync(process.execPath, ['scripts/restore.mjs', `backups/${backupName}`], {
     cwd: root, env: { ...restoreEnv, MEDIA_ROOT: mediaCurrentTarget, RESTORE_MEDIA_ROOT: mediaCurrentAlias },
     encoding: 'utf8',
   })
   assert.notEqual(aliasedCurrentMediaRestore.status, 0)
-  assert.match(aliasedCurrentMediaRestore.stderr, /拒绝恢复到当前媒体目录/)
+  assert.match(aliasedCurrentMediaRestore.stderr, /恢复媒体目录不能与当前媒体目录重叠/)
   assert.deepEqual(await readdir(mediaCurrentTarget), [])
   await assert.rejects(access(restoreLog), { code: 'ENOENT' })
 

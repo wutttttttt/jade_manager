@@ -142,6 +142,26 @@ assert.equal((await fetch(`${base}/api/demo/yangmei-a/media/${uploaded.body.id}`
 uploadedState = await setMediaStatus(uploadedState, 'approved')
 assert.equal((await fetch(`${base}/api/demo/yangmei-a/media/${uploaded.body.id}`)).status, 200)
 
+const videoBody = await readFile(new URL('../var/media/demo-video.mp4', import.meta.url))
+const uploadedVideo = await request('/api/demo/yangmei-a/media?goodsId=40000000-0000-4000-8000-000000000001&kind=video', {
+  method: 'POST', headers: { ...owner, 'content-type': 'video/mp4', 'idempotency-key': 'integration-video-upload-v1' },
+  body: videoBody,
+})
+assert.equal(uploadedVideo.response.status, 201)
+const videoState = (await request('/api/demo/yangmei-a/publishing', { headers: owner })).body.goods
+  .flatMap((goods) => goods.media).find((asset) => asset.id === uploadedVideo.body.id)
+if (videoState.status !== 'approved') {
+  assert.equal((await fetch(`${base}/api/demo/yangmei-a/media/${uploadedVideo.body.id}`)).status, 404)
+  await setMediaStatus(videoState, 'approved')
+}
+const videoUrl = `${base}/api/demo/yangmei-a/media/${uploadedVideo.body.id}`
+const approvedVideo = await fetch(videoUrl, { headers: { range: 'bytes=0-9' } })
+assert.equal(approvedVideo.status, 206)
+assert.equal(approvedVideo.headers.get('content-type'), 'video/mp4')
+assert.equal((await approvedVideo.arrayBuffer()).byteLength, 10)
+assert.equal((await request('/api/demo/yangmei-a/showroom')).body.goods[0].media
+  .some((asset) => asset.id === uploadedVideo.body.id && asset.kind === 'video'), true)
+
 const staffForbidden = await request('/api/demo/yangmei-a/staff', { headers: { 'x-demo-staff': 'assistant-a' } })
 assert.equal(staffForbidden.response.status, 403)
 const newAssistant = await post('/api/demo/yangmei-a/staff',

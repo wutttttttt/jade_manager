@@ -20,6 +20,7 @@ test('单客商品授权补充组外可见性但不改变价格', () => {
   const outsider = { ...customer, groupIds: [], grantedGoodsIds: ['jade-1'] }
   assert.equal(canView(goods, outsider), true)
   assert.deepEqual(quote(goods, outsider, null), { priceCents: 16_000, priceYuan: 160, source: 'coefficient' })
+  assert.equal(quote(goods, { ...outsider, grantedGoodsIds: [] }, 11_000), null)
 })
 
 test('单客价优先，最低价兜底，最终四舍五入到元', () => {

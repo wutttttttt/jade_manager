@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
 import { createReadStream } from 'node:fs'
 import { chmod, lstat, mkdir, mkdtemp, readFile, readdir, realpath, rename, rm, stat } from 'node:fs/promises'
-import { dirname, resolve } from 'node:path'
+import { basename, dirname, resolve } from 'node:path'
 
 const source = resolve(process.argv[2] ?? '')
 const databaseUrl = process.env.RESTORE_DATABASE_URL
@@ -61,20 +61,33 @@ const pgEnv = { ...process.env,
   PGPASSWORD: decodeURIComponent(database.password),
   PGDATABASE: databaseName,
 }
+const existingObjects = execFileSync(resolve(postgresBin, 'psql'), [
+  '-X', '-tA', '--dbname', databaseName, '--command',
+  `select count(*) from pg_class c join pg_namespace n on n.oid = c.relnamespace
+   where n.nspname not in ('pg_catalog', 'information_schema')
+     and n.nspname !~ '^pg_toast' and c.relkind in ('r', 'p', 'v', 'm', 'S', 'f')`,
+], { encoding: 'utf8', env: pgEnv }).trim()
+if (existingObjects !== '0') throw new Error('恢复目标数据库必须为空')
 
 const realRoot = await realpath(root)
 const realMediaParent = await realpath(dirname(mediaRoot))
 if (realMediaParent !== realRoot && !realMediaParent.startsWith(`${realRoot}/`)) {
   throw new Error('恢复媒体目录不能经符号链接逃出项目')
 }
-await mkdir(mediaRoot, { recursive: true })
-const realMediaRoot = await realpath(mediaRoot)
-if (!realMediaRoot.startsWith(`${realRoot}/`)) throw new Error('恢复媒体目录不能经符号链接逃出项目')
 const realCurrentMediaRoot = await realpath(currentMediaRoot).catch((error) => {
   if (error.code === 'ENOENT') return null
   throw error
 })
-if (realMediaRoot === realCurrentMediaRoot) throw new Error('拒绝恢复到当前媒体目录')
+const overlaps = (a, b) => a === b || a.startsWith(`${b}/`) || b.startsWith(`${a}/`)
+if (realCurrentMediaRoot && overlaps(resolve(realMediaParent, basename(mediaRoot)), realCurrentMediaRoot)) {
+  throw new Error('恢复媒体目录不能与当前媒体目录重叠')
+}
+await mkdir(mediaRoot, { recursive: true })
+const realMediaRoot = await realpath(mediaRoot)
+if (!realMediaRoot.startsWith(`${realRoot}/`)) throw new Error('恢复媒体目录不能经符号链接逃出项目')
+if (realCurrentMediaRoot && overlaps(realMediaRoot, realCurrentMediaRoot)) {
+  throw new Error('恢复媒体目录不能与当前媒体目录重叠')
+}
 if ((await readdir(realMediaRoot)).length) throw new Error('恢复媒体目录必须为空')
 const mediaMode = (await stat(realMediaRoot)).mode & 0o777
 const stagedMedia = await mkdtemp(resolve(dirname(realMediaRoot), '.jade-media-restore-'))
@@ -84,7 +97,7 @@ try {
   })
   await chmod(stagedMedia, mediaMode)
   execFileSync(resolve(postgresBin, 'pg_restore'), [
-    '--clean', '--if-exists', '--single-transaction', '--no-owner', '--no-privileges',
+    '--single-transaction', '--exit-on-error', '--no-owner', '--no-privileges',
     '--dbname', databaseName, databaseFile,
   ], { stdio: 'inherit', env: pgEnv })
   await rename(stagedMedia, realMediaRoot)
