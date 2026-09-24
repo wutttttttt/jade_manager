@@ -1,6 +1,6 @@
 # 环境依赖、安装启动与复现约定
 
-更新日期：2026-09-24 05:14 CST。依赖、PostgreSQL、API、基础集成检查和小程序构建已在当前 macOS 主机实跑。媒体/客户/员工扩展代码已构建，最新数据库迁移和扩展集成脚本待在可访问本机数据库的终端复验。
+更新日期：2026-09-24 08:48 CST。依赖、PostgreSQL、API、基础集成检查和小程序构建已在当前 macOS 主机实跑。用户在普通终端执行扩展 `npm run test:integration` 返回 `integration: all assertions passed`，并成功将真实联合备份恢复到独立空库及媒体目录；当前执行沙箱仍无法连接本机数据库，数据库逐表内容比对待执行。
 
 ## 1. 实际版本
 
@@ -129,13 +129,27 @@ RESTORE_MEDIA_ROOT='./var/media-restore' \
 npm run restore -- backups/manual-2026-09-23
 ```
 
-联合备份要求 API 已停止，并用 `BACKUP_CONFIRM_OFFLINE=1` 显式确认，避免数据库快照与本地媒体在上传期间错位；未确认时脚本在创建目录前拒绝执行。残留的 `.part` 临时上传不会入包；媒体目录若含链接或其他特殊文件，或备份目标位于媒体目录内，备份立即失败。任一步失败会自动移除本次新建的不完整目录。恢复必须同时提供当前 `DATABASE_URL`，否则无法确认目标库独立并会拒绝执行；`backups` 目录不能是符号链接，清单、数据库包和媒体包都必须是普通文件。恢复前只接受不超过 64 KiB、版本 1 且含合法 SHA-256 的 `manifest.json`；大文件哈希按流计算，不整包读入内存。归档只允许普通文件和目录，拒绝绝对路径、`..`、链接、FIFO 或设备等特殊条目。媒体目标必须为仓库内的空目录，不能等于当前 `MEDIA_ROOT`（包括符号链接指向同一目录），且父目录须预先存在于仓库内；脚本在创建目标前检查父目录真实路径，拒绝借符号链接写到仓库外。随后在同盘临时目录完整解压媒体，成功后才运行单事务 `pg_restore`，最后原子替换媒体目录。媒体解压或数据库恢复报错时不会留下半恢复媒体目标；数据库与文件系统之间不具备跨资源事务，若数据库恢复成功后媒体替换失败，应保持 API 停机并在新目标库/目录重新演练。实际真实 PostgreSQL 联合恢复演练尚未执行。
+联合备份要求 API 已停止，并用 `BACKUP_CONFIRM_OFFLINE=1` 显式确认，避免数据库快照与本地媒体在上传期间错位；未确认时脚本在创建目录前拒绝执行。残留的 `.part` 临时上传不会入包；媒体目录若含链接或其他特殊文件，或备份目标位于媒体目录内，备份立即失败。任一步失败会自动移除本次新建的不完整目录。恢复必须同时提供当前 `DATABASE_URL`，否则无法确认目标库独立并会拒绝执行；`backups` 目录不能是符号链接，清单、数据库包和媒体包都必须是普通文件。恢复前只接受不超过 64 KiB、版本 1 且含合法 SHA-256 的 `manifest.json`；大文件哈希按流计算，不整包读入内存。归档只允许普通文件和目录，拒绝绝对路径、`..`、链接、FIFO 或设备等特殊条目。媒体目标必须为仓库内的空目录，不能等于当前 `MEDIA_ROOT`（包括符号链接指向同一目录），且父目录须预先存在于仓库内；脚本在创建目标前检查父目录真实路径，拒绝借符号链接写到仓库外。随后在同盘临时目录完整解压媒体，成功后才运行单事务 `pg_restore`，最后原子替换媒体目录。媒体解压或数据库恢复报错时不会留下半恢复媒体目标；数据库与文件系统之间不具备跨资源事务，若数据库恢复成功后媒体替换失败，应保持 API 停机并在新目标库/目录重新演练。2026-09-24 用户普通终端已完成真实 PostgreSQL 联合恢复演练，逐表内容比对仍待执行。
 
 恢复前另用 PostgreSQL 自带的 `psql` 检查目标库是否含用户表、视图、序列等对象；非空库在运行 `pg_restore` 前拒绝，须创建独立空库重试。
 
 `pg_restore` 只对空库运行，使用 `--single-transaction --exit-on-error`；不使用 `--clean` 删除目标库已有对象。
 
 恢复媒体目标也不能是当前 `MEDIA_ROOT` 的父目录或子目录；路径预检在创建新目标前拒绝嵌套，防止恢复内容混进当前媒体或备份。
+
+本次恢复后的数据库内容尚需在可连接 PostgreSQL 的普通终端做只读比对。以下命令依次输出源库和恢复库中客户、货品、媒体记录、审计的行数与按完整行内容排序后的摘要；对应行应完全一致，不会修改数据：
+
+```sh
+for database_name in jade_manager jade_manager_restore_t1_20260924; do
+  printf '%s\n' "$database_name"
+  /opt/homebrew/opt/postgresql@16/bin/psql -X -At -F ' | ' -v ON_ERROR_STOP=1 \
+    -d "postgres://jade:jade@127.0.0.1:5432/$database_name" \
+    -c "SELECT 'customers', count(*), md5(coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text)::text, '[]')) FROM customers t
+UNION ALL SELECT 'goods', count(*), md5(coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text)::text, '[]')) FROM goods t
+UNION ALL SELECT 'media_assets', count(*), md5(coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text)::text, '[]')) FROM media_assets t
+UNION ALL SELECT 'audit_entries', count(*), md5(coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text)::text, '[]')) FROM audit_entries t"
+done
+```
 
 ## 6. 配置、秘密与实际验证
 
@@ -149,7 +163,7 @@ npm run restore -- backups/manual-2026-09-23
 | 2026-09-23 15:59 `npm run miniapp:build` | 通过：Compiler 5.27，原生批次分享按钮及入口参数已编译，16 个非元数据输出文件 |
 | `WECHAT_APPID=wx0123456789abcdef npm run miniapp:build:wechat` | 通过：测试 AppID 只写入构建输出；随后普通构建已恢复默认 `touristappid` |
 | 2026-09-23 20:41 干净临时目录离线 `npm ci` + `check` + `miniapp:build` | 通过：545 个包、12/12 测试、4 份 API 静态检查、4 份脚本语法检查、16 个非元数据输出文件；四种客户身份、货品撤销/恢复和原生分享均在产物中，临时目录已清理 |
-| `003_media.sql` / `004_staff.sql` + 扩展 `test:integration` | 未实跑：22:30 复核宿主 PostgreSQL/API 的 TCP 端口仍不可达；工作区内独立 `initdb` 即使指定 `dynamic_shared_memory_type=mmap` 与 `shared_memory_type=mmap`，引导进程仍因 `shmget: Operation not permitted` 失败，失败目录已清理 |
+| 2026-09-23 22:30 当时的扩展集成尝试 | 当时未实跑：宿主 PostgreSQL/API 的 TCP 端口在任务沙箱内不可达；工作区内独立 `initdb` 即使指定 `dynamic_shared_memory_type=mmap` 与 `shared_memory_type=mmap`，引导进程仍因 `shmget: Operation not permitted` 失败，失败目录已清理。09-24 用户普通终端已运行扩展集成并通过，见后续记录 |
 | 自动化备份/恢复控制测试 | 通过：伪 pg 工具下实际打包/解包、SHA-256、媒体对比、当前库/篡改/危险路径/链接拒绝；真实 pg 演练待执行 |
 | 2026-09-23 17:15 备份/恢复故障保护 | 通过：未确认 API 离线时拒绝备份；备份失败不残留目录；媒体预解压失败时未启动 `pg_restore`；恢复含单事务并拒绝未知版本和特殊条目 |
 | 2026-09-23 17:16 `npm run check && npm run miniapp:build` | 通过：11/11 测试、API 静态检查、4 份脚本语法检查、Compiler 5.27、16 个非元数据输出文件及原生批次分享产物 |
@@ -177,6 +191,8 @@ npm run restore -- backups/manual-2026-09-23
 | 2026-09-24 03:16 看款失败不显示旧价 | 删除客户端离线商品样例，API 请求失败时仅展示暂不可用提示；`npm run check` 14/14、API 类型与脚本检查通过，`npm run miniapp:build` Compiler 5.27 通过。PostgreSQL 5432、API 3000、微信工具 19554 在当前沙箱内均不可达；真机行为待自有 AppID 验证 |
 | 2026-09-24 04:13 恢复进一步收紧 | 空库预检后移除 `pg_restore --clean --if-exists`，改为单事务且显式遇错即停；模拟参数及故障测试通过，`npm run check` 14/14、API 类型和脚本语法检查通过。真实数据库恢复仍待连接可用 |
 | 2026-09-24 05:14 媒体目录重叠保护 | 恢复拒绝当前媒体根目录的父/子目录，模拟子目录目标时在创建目录和运行 `pg_restore` 前拒绝；`npm run check` 14/14、API 类型及脚本语法检查通过。PostgreSQL/API/微信工具端口仍不可达 |
+| 2026-09-24 08:37 扩展 HTTP 集成 | 用户从项目目录在普通 Mac 终端运行 `npm run test:integration`，提供的完整结束输出为 `integration: all assertions passed`。覆盖媒体上传/审核、客户可见性/报价、权限、批次、版本与跨档口等脚本断言；迁移命令的单独输出未提供，不将其单独记为已验证。此任务沙箱仍无法连接 PostgreSQL/API；真实备份恢复与微信真机未执行 |
+| 2026-09-24 08:45 联合备份与恢复 | 用户先停止 API，再用 `BACKUP_CONFIRM_OFFLINE=1 npm run backup -- backups/t1-20260924` 成功备份，并创建 `jade_manager_restore_t1_20260924` 独立空库；`npm run restore -- backups/t1-20260924` 成功恢复到该库及 `var/media-restore-t1-20260924`。备份来自 PostgreSQL `16.15`，清单的两份 SHA-256 与实际文件一致；恢复媒体 6 个业务文件与源目录逐项一致，源目录仅多出被备份排除的 macOS `._*` 元数据。数据库逐表内容尚未比对，当前任务沙箱 `pg_isready` 仍无响应 |
 | 微信 CLI | IDE/19554 连通；真实 AppID 构建命令已就绪，实际导入仍受缺少自有 AppID及当前 Mac 锁屏阻塞 |
 | 最新 `npm audit --omit=dev` 复核 | 未执行：DNS 无法解析 `registry.npmjs.org`；保留下方上次成功审计结果 |
 

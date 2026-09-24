@@ -1,6 +1,6 @@
 # 翡翠档口经营工具
 
-面向揭阳阳美及周边中小翡翠档口的本地开发基线。当前已建立并实际跑通 uni-app + Vue 3 + TypeScript 微信小程序构建、Node.js TypeScript 单体服务、PostgreSQL 16 结构与合成种子；T0 本机验收通过。T1 已补全媒体上传/审核和客户管理代码，最新数据库迁移与扩展集成场景待重启 API 后实跑；真实 AppID 和真机联调尚未完成。
+面向揭阳阳美及周边中小翡翠档口的本地开发基线。当前已建立并实际跑通 uni-app + Vue 3 + TypeScript 微信小程序构建、Node.js TypeScript 单体服务、PostgreSQL 16 结构与合成种子；T0 本机验收通过。T1 媒体上传/审核、客户管理等扩展 HTTP 场景已在用户普通终端通过 `npm run test:integration`；真实联合备份与独立空库恢复已成功，恢复媒体与源文件一致。数据库逐表内容比对、AppID 导入和真机联调尚未完成。
 
 ## 已实现
 
@@ -54,7 +54,7 @@ npm run test:integration
 - 微信真实登录和手机号授权尚未接入；`DEMO_MODE=1` 的测试身份只允许在非生产环境使用。
 - 交易与收款在线下进行；当前不实现支付、担保、分账、公开商城、品质结论、自动群发、标签系统、盘点或应收。
 - 服务端授权只能限制后续访问，不能阻止截图、翻拍或客户转述价格。
-- 媒体上传/审核与客户授权管理已实现，但扩展集成脚本因当前执行沙箱禁止 PostgreSQL 连接和共享内存尚未实跑；微信开发者工具因 `touristappid` 不存在而未完成导入/真机。
+- 媒体上传/审核与客户授权管理的扩展集成脚本已在用户普通终端通过；联合备份与独立库恢复也已在该终端成功。当前执行沙箱仍无法连接 PostgreSQL，尚未对比源库与恢复库的客户、货品、媒体记录和审计内容。微信开发者工具因 `touristappid` 不存在而未完成导入/真机。
 - 上次成功的 npm 生产依赖审计有 32 项（11 high，无 critical），均来自当前 DCloud/uni-app 兼容依赖树；本次复核受 registry DNS 阻断。不能使用会降级 DCloud 包的 `audit fix --force`，上线前须升级到官方修复组合并回归。
 
 继续开发前依次阅读 [决策登记](docs/01-decisions.md)、[架构](docs/02-architecture.md)、[数据与接口](docs/03-data-and-interfaces.md)、[路线图](docs/04-roadmap.md)及[当前进度](docs/06-progress.md)。最新用户确认优先于历史说明书。
