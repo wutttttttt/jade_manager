@@ -58,6 +58,22 @@ export function readLocalMedia(path: string): Promise<ArrayBuffer> {
   })
 }
 
+export function removeTemporaryMedia(path: string) {
+  if (path) uni.getFileSystemManager().unlink({ filePath: path, fail: () => undefined })
+}
+
+export function downloadMediaImage(url: string): Promise<string> {
+  return new Promise((resolve, reject) => uni.downloadFile({
+    url,
+    success: ({ statusCode, tempFilePath }) => {
+      if (statusCode === 200 && tempFilePath) return resolve(tempFilePath)
+      removeTemporaryMedia(tempFilePath)
+      reject(new Error('图片暂不可用，请刷新重试'))
+    },
+    fail: () => reject(new Error('图片加载失败，请检查网络后刷新')),
+  }))
+}
+
 export function saveDraft(draft: unknown) {
   uni.setStorageSync('staff-goods-draft-v1', draft)
 }
